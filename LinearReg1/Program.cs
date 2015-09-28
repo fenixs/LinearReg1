@@ -31,6 +31,8 @@ namespace LinearReg1
             
             
             var lines = File.ReadAllLines(inputstr);
+            
+            
             if (lines==null || lines.Length == 0)
             {
                 Console.WriteLine("文件错误");
@@ -38,39 +40,119 @@ namespace LinearReg1
                 return;
             }
             
-            var row = lines.Length;     //当前数据的行数，矩阵的行数
-            row = row - 1;          //默认第一行为header，不计算
-            var col = lines[0].Count(c => c == ',') + 1;        //当前数据的列数
-                 //当前矩阵的列数，第一列要添加数字1,因为多一列结果列，不需要添加1
-            
-            var datas = new double[row,col];        //声明源数据矩阵 x1,x2,...,xn
-            var ydata = new double[row];           //声明结果矩阵,y
-            //读取数据源赋值到矩阵
-            for (int r = 0; r < row; r++)
-            {
-                var curLine = lines[r + 1].Split(',');      //第一行默认为header
-                datas[r, 0] = 1d;       //第一列赋值为1
-                for (int c = 1; c < col; c++)
-                {
-                    datas[r, c] = Convert.ToDouble(curLine[c-1]);
-                }
-                ydata[r] = Convert.ToDouble(curLine[col - 1]);     //获取到实际结果,y
-            }
+
+            //var datas = new double[row, col];        //声明源数据矩阵 x1,x2,...,xn
+            //var ydata = new double[row];           //声明结果矩阵,y
+            //var headers = new string[];
+
+            double[,] xdata;
+            double[] ydata;
+            string[] headers;
 
 
+            ReadData(lines, out headers, out xdata, out ydata);     //读取数据
 
-            var p = LinearReg(datas, ydata);
+            LinearRegRange(3, 4, xdata, ydata);
 
-            for (int i = 0; i < p.Count; i++)
-            {
-                Console.Write(p[i]);
-                Console.Write(",");
-            }
-            Console.WriteLine();
+            var p = LinearReg(xdata, ydata);            //线性回归
 
+
+            PrintResult(p, headers);
        
 
             Console.ReadKey();
+        }
+
+        #region "方法"
+
+        /// <summary>
+        /// 多次计算回归结果
+        /// 遍历参数表的各个参数
+        /// </summary>
+        /// <param name="minParamCount">最小参数个数</param>
+        /// <param name="maxParamCount">最大参数个数</param>
+        /// <param name="xdata">全部参数的x集合</param>
+        /// <param name="ydata">结果集</param>
+        private static void LinearRegRange(int minParamCount, int maxParamCount,double[,] xdata,double[] ydata)
+        {
+            //获取矩阵的row 和 col
+            var row = xdata.GetLength(0);
+            var col = xdata.GetLength(1);
+            
+
+            //获取列下标，如果有20列，则下标数组为0-19
+            var colnumbers = new int[col - 1];
+            for (int i = 1; i < col; i++)
+			{
+			    colnumbers[i - 1] = i;
+			}
+
+            for (int i = minParamCount; i <= maxParamCount; i++)
+            {
+                var combs = PermutationAndCombination<int>.GetCombination(colnumbers,i);
+                double[,] xdata1 = new double[row, i];
+                
+
+            }
+        }
+        
+
+        /// <summary>
+        /// 从cvs文件中读取数据
+        /// </summary>
+        /// <param name="fileLines"></param>
+        /// <param name="headers"></param>
+        /// <param name="xdata"></param>
+        /// <param name="ydata"></param>
+        private static void ReadData(string[] fileLines, out string[] headers, out double[,] xdata, out double[] ydata)
+        {
+            var row = fileLines.Length;     //当前数据的行数，矩阵的行数
+            headers = fileLines[0].Split(',');     //获取到抬头的行数 
+
+            row = row - 1;          //默认第一行为header，不计算
+            var col = fileLines[0].Count(c => c == ',') + 1;        //当前数据的列数
+            //当前矩阵的列数，第一列要添加数字1,因为多一列结果列，不需要添加1
+            xdata = new double[row, col];
+            ydata = new double[row];
+            //读取数据源赋值到矩阵
+            for (int r = 0; r < row; r++)
+            {
+                var curLine = fileLines[r + 1].Split(',');      //第一行默认为header
+                xdata[r, 0] = 1d;       //第一列赋值为1
+                for (int c = 1; c < col; c++)
+                {
+                    xdata[r, c] = Convert.ToDouble(curLine[c - 1]);
+                }
+                ydata[r] = Convert.ToDouble(curLine[col - 1]);     //获取到实际结果,y
+            }
+        }
+
+        /// <summary>
+        /// 打印数据结果
+        /// </summary>
+        /// <param name="p"></param>
+        /// <param name="headers"></param>
+        private static void PrintResult(Vector<double> p,string[] headers)
+        {
+            for (int i = 0; i < p.Count; i++)
+            {
+                if (i > 0)
+                {
+                    if (p[i] > 0)
+                        Console.Write(" + ");
+                    else
+                    {
+                        Console.Write(" - ");
+                    }
+                    Console.Write("{0:0.##} * {1}", Math.Abs(p[i]), headers[i - 1]);        //header从第二个数值开始
+                }
+                else
+                {
+                    Console.Write(p[i].ToString("0.##"));       //第一个数值是常量
+                }
+
+            }
+            Console.WriteLine();
         }
 
         /// <summary>
@@ -86,6 +168,8 @@ namespace LinearReg1
             return p;
             
         }
+
+        #endregion
 
         static void CalHotel()
         {
@@ -122,18 +206,7 @@ namespace LinearReg1
 
         static void ExamFunction()
         {
-             //var datas = new double[][]{
-            //    new double[]{  1, 283, 80089,184,280 },
-            //    new double[]{  1, 283, 80089,184,280 },
-            //    new double[]{  1, 294, 86436,198,290 },
-            //    new double[]{  1, 298, 88804,200,295 },
-            //    new double[]{  1, 303, 91809,198,299 },
-            //    new double[]{  1, 302, 91204,184,299 },
-            //    new double[]{  1, 296, 87616,189,292 },
-            //    new double[]{ 1, 294, 86436,234,290 },
-            //    new double[]{ 1, 285, 81225,176,283 },
-            //    new double[]{ 1, 279, 77841,210,276 }
-            //};
+            
             var datas = new double[,]{
                 {  1, 283, 80089,184,280 },
                 {  1, 283, 80089,184,280 },
