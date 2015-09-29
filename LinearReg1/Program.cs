@@ -27,7 +27,7 @@ namespace LinearReg1
                 Console.WriteLine("请输入csv文件目录(输入q退出):");
                 inputstr = Console.ReadLine();
             }
-            Console.WriteLine("csv文件读取成功");
+            Console.WriteLine("csv文件读取成功...");
             
             
             var lines = File.ReadAllLines(inputstr);
@@ -51,13 +51,16 @@ namespace LinearReg1
 
 
             ReadData(lines, out headers, out xdata, out ydata);     //读取数据
-
-            LinearRegRange(3, 4, xdata, ydata);
-
-            var p = LinearReg(xdata, ydata);            //线性回归
-
-
-            PrintResult(p, headers);
+            Console.WriteLine("读取数据成功...");
+            int minParamCount = 6;
+            int maxParamCount = 6;
+            var resLines = LinearRegRange(minParamCount, maxParamCount, xdata, ydata, inputstr, headers);
+            Console.WriteLine("回归分析{0}个参数到{1}个参数的各种组合...",minParamCount,maxParamCount);
+            WriteResFile(inputstr, resLines,string.Format("{0}-{1}",minParamCount,maxParamCount));
+            Console.WriteLine("写入结果文件");
+            //ReadDataOld(lines, out headers, out xdata, out ydata);     //读取数据
+            //var p = LinearReg(xdata, ydata);            //线性回归
+            //PrintResult(p, headers);
        
 
             Console.ReadKey();
@@ -65,35 +68,128 @@ namespace LinearReg1
 
         #region "方法"
 
+
         /// <summary>
-        /// 多次计算回归结果
+        /// 计算每个公式的R2
+        /// </summary>
+        /// <param name="xdata">当前使用的x数据源，第一列为1</param>
+        /// <param name="ydata"></param>
+        /// <param name="p">回归公式，p[0]为常量</param>
+        /// <returns></returns>
+        private static void CalR2CV(double[,] xdata,double[] ydata,Vector<double> p,out double R2,out double CV)
+        {
+            /*
+             * R^2 = 1 - SEline/SEy
+             * SEline = (y1-f(x1))^2 + (y2-f(x2))^2 + ... + (yn-f(xn))^2        残差平方和
+             * SEy = (y1-yaver)^2 + (y2-yaver)^2 + ... + (yn-yaver)^2
+             * */
+            int row = xdata.GetLength(0);
+            int col = xdata.GetLength(1);
+            R2 = 0d;
+            CV = 1d;
+
+            if(ydata.Length!=row) return;
+            if(p.Count != col) return;
+
+            double yAverage = ydata.Average();      //获取yAverage
+            double[] y1 = new double[row];     //建立回归公式计算的y值数组
+            //对矩阵每一行计算y1
+            for (int r = 0; r < row; r++)
+            {
+                y1[r] = p[0];       //先计算常量
+                for (int c = 1; c < col; c++)
+                {
+                    y1[r] += p[c] * xdata[r, c];        //累积计算y1[r]
+                }
+            }
+
+            double[] SEy = new double[row];
+            double[] SEline = new double[row];
+            for (int i = 0; i < row; i++)
+            {
+                SEy[i] = Math.Pow((ydata[i] - yAverage), 2);
+                SEline[i] = Math.Pow((ydata[i] - y1[i]), 2);
+            }
+            double sumSEline = SEline.Sum();
+            double sumSEy = SEy.Sum();
+
+            R2 = 1d;
+            if (sumSEy != 0d)
+            {
+                R2 = 1 - sumSEline / sumSEy;
+            }
+            var RMSE = Math.Sqrt(sumSEline / row);
+            CV = RMSE / yAverage;
+            //return R2;
+            //return y1;
+        }
+
+        private static void WriteResFile(string srcFilePath,List<string> resLines,string partailResFileName = "")
+        {
+            //获取源文件名            
+            var fileName = Path.GetFileName(srcFilePath);
+            var resFileName = fileName.Replace(".csv", string.Format("_结果{0}.csv", partailResFileName));
+            var newPath = srcFilePath.Replace(fileName, resFileName);      //获取结果的文件名
+
+            var linesWithHeader = new List<string>();
+            linesWithHeader.Add("Linear Regression Result,R2,CV(RMSE)");
+            linesWithHeader.AddRange(resLines);
+
+            File.WriteAllLines(newPath, linesWithHeader);
+
+        }
+
+        /// <summary>
+        /// 按照给定的参数范围计算各个组合，然后对每个组合计算回归结果
         /// 遍历参数表的各个参数
         /// </summary>
         /// <param name="minParamCount">最小参数个数</param>
         /// <param name="maxParamCount">最大参数个数</param>
         /// <param name="xdata">全部参数的x集合</param>
         /// <param name="ydata">结果集</param>
-        private static void LinearRegRange(int minParamCount, int maxParamCount,double[,] xdata,double[] ydata)
+        private static List<string> LinearRegRange(int minParamCount, int maxParamCount,double[,] xdata,double[] ydata,string path,string[] headers)
         {
             //获取矩阵的row 和 col
             var row = xdata.GetLength(0);
             var col = xdata.GetLength(1);
             
 
-            //获取列下标，如果有20列，则下标数组为0-19
-            var colnumbers = new int[col - 1];
-            for (int i = 1; i < col; i++)
+            //获取列下标，如果有20列，则下标数组为0-19            
+            var colnumbers = new int[col];
+            for (int i = 0; i < col; i++)
 			{
-			    colnumbers[i - 1] = i;
-			}
+			    colnumbers[i] = i;
+			}            
+
+            List<string> resLines = new List<string>(); //结果数据行
 
             for (int i = minParamCount; i <= maxParamCount; i++)
             {
                 var combs = PermutationAndCombination<int>.GetCombination(colnumbers,i);
-                double[,] xdata1 = new double[row, i];
-                
-
+                double[,] xdata1 = new double[row, i + 1];
+                foreach (var cb in combs)
+                {
+                    //从完整源数据正提取当前组合的新数据                    
+                    for (int r = 0; r < row; r++)
+                    {
+                        xdata1[r, 0] = 1;            //第一列置为1
+                        for (int c = 1; c <= i; c++)
+                        {
+                            xdata1[r, c] = xdata[r, cb[c - 1]];
+                        }
+                    }
+                    var p = LinearReg(xdata1, ydata);
+                    var line = GeneResultSTring(p, headers,cb);
+                    double R2, CV;
+                    CalR2CV(xdata1, ydata, p,out R2,out CV);
+                    line += "," + R2.ToString("0.#####");
+                    line += "," + CV.ToString("0.#####");
+                    resLines.Add(line);
+                }
             }
+
+            return resLines;
+
         }
         
 
@@ -112,6 +208,42 @@ namespace LinearReg1
             row = row - 1;          //默认第一行为header，不计算
             var col = fileLines[0].Count(c => c == ',') + 1;        //当前数据的列数
             //当前矩阵的列数，第一列要添加数字1,因为多一列结果列，不需要添加1
+            xdata = new double[row, col - 1];
+            ydata = new double[row];
+            //读取数据源赋值到矩阵
+            for (int r = 0; r < row; r++)
+            {
+                var curLine = fileLines[r + 1].Split(',');      //第一行默认为header
+                //xdata[r, 0] = 1d;       //第一列赋值为1
+                //for (int c = 1; c < col; c++)
+                //{
+                //    xdata[r, c] = Convert.ToDouble(curLine[c - 1]);
+                //}
+                //直接获取数据
+                for (int c = 0; c < col - 1; c++)
+                {
+                    xdata[r, c] = Convert.ToDouble(curLine[c]);
+                }
+
+                ydata[r] = Convert.ToDouble(curLine[col - 1]);     //获取到实际结果,y
+            }
+        }
+
+        /// <summary>
+        /// 从cvs文件中读取数据
+        /// </summary>
+        /// <param name="fileLines"></param>
+        /// <param name="headers"></param>
+        /// <param name="xdata"></param>
+        /// <param name="ydata"></param>
+        private static void ReadDataOld(string[] fileLines, out string[] headers, out double[,] xdata, out double[] ydata)
+        {
+            var row = fileLines.Length;     //当前数据的行数，矩阵的行数
+            headers = fileLines[0].Split(',');     //获取到抬头的行数 
+
+            row = row - 1;          //默认第一行为header，不计算
+            var col = fileLines[0].Count(c => c == ',') + 1;        //当前数据的列数
+            //当前矩阵的列数，第一列要添加数字1,因为多一列结果列，不需要添加1
             xdata = new double[row, col];
             ydata = new double[row];
             //读取数据源赋值到矩阵
@@ -123,6 +255,8 @@ namespace LinearReg1
                 {
                     xdata[r, c] = Convert.ToDouble(curLine[c - 1]);
                 }
+                
+
                 ydata[r] = Convert.ToDouble(curLine[col - 1]);     //获取到实际结果,y
             }
         }
@@ -156,6 +290,37 @@ namespace LinearReg1
         }
 
         /// <summary>
+        /// 生成结果的公式
+        /// </summary>
+        /// <param name="p"></param>
+        /// <param name="headers"></param>
+        /// <returns></returns>
+        private static string GeneResultSTring(Vector<double> p, string[] headers,int[] cols)
+        {
+            StringBuilder sbRes = new StringBuilder();
+            sbRes.Append("F: ");
+            for (int i = 0; i < p.Count; i++)
+            {
+                if (i > 0)
+                {
+                    if (p[i] > 0)
+                        sbRes.Append(" + ");
+                    else
+                    {
+                        sbRes.Append(" - ");
+                    }
+                    sbRes.Append(string.Format("{0:0.##} * {1}", Math.Abs(p[i]), headers[cols[i - 1]]));        //header从第二个数值开始
+                }
+                else
+                {
+                    sbRes.Append(p[i].ToString("0.##"));       //第一个数值是常量
+                }
+            }
+            //sbRes.Append("\"");
+            return sbRes.ToString();
+        }
+
+        /// <summary>
         /// 回归计算
         /// </summary>
         /// <param name="datas">因变量矩阵,x1,x2..,xn</param>
@@ -171,103 +336,5 @@ namespace LinearReg1
 
         #endregion
 
-        static void CalHotel()
-        {
-            var M3 = new double[] {  1, 283, 80089,184,280 };
-            var M4 = new double[] {  1, 291, 84681,209,287 };
-            var M5 = new double[] {  1, 294, 86436,198,290 };
-            var M6 = new double[] {  1, 298, 88804,200,295 };
-            var M7 = new double[] {  1, 303, 91809,198,299 };
-            var M8 = new double[] {  1, 302, 91204,184,299 };
-            var M9 = new double[] {  1, 296, 87616,189,292 };
-            var M10 = new double[] { 1, 294, 86436,234,290 };
-            var M11 = new double[] { 1, 285, 81225,176,283 };
-            var M12 = new double[] { 1, 279, 77841,210,276 };
-
-            var X = new DenseMatrix(10, 5);
-            X.SetRow(0, M3);
-            X.SetRow(1, M4);
-            X.SetRow(2, M5);
-            X.SetRow(3, M6);
-            X.SetRow(4, M7);
-            X.SetRow(5, M8);
-            X.SetRow(6, M9);
-            X.SetRow(7, M10);
-            X.SetRow(8, M11);
-            X.SetRow(9, M12);
-
-            var ydata = new double[] { 539442, 340016, 48100, 574992, 748957, 687898, 648278, 519887, 384086, 539514 };
-            var y = new DenseVector(ydata);
-            var p = X.QR().Solve(y);
-            //Console.WriteLine("a={0},b={1},c={2},d={3},e={4},f={5}", p[0], p[1], p[2], p[3], p[4],p[5]);
-            Console.WriteLine("a={0},b={1},c={2},d={3},e={4}", p[0], p[1], p[2], p[3], p[4]);
-            Console.WriteLine("1");
-        }
-
-        static void ExamFunction()
-        {
-            
-            var datas = new double[,]{
-                {  1, 283, 80089,184,280 },
-                {  1, 283, 80089,184,280 },
-                {  1, 294, 86436,198,290 },
-                {  1, 298, 88804,200,295 },
-                {  1, 303, 91809,198,299 },
-                {  1, 302, 91204,184,299 },
-                {  1, 296, 87616,189,292 },
-                { 1, 294, 86436,234,290 },
-                { 1, 285, 81225,176,283 },
-                { 1, 279, 77841,210,276 }
-            };
-
-           
-            
-            var funcs = new double[] {1480000,-10400,1816,764.5,4985 };
-
-            var row = datas.GetLength(0);
-            var col = datas.GetLength(1);
-            for (int i = 0; i < row; i++)
-            {
-                var me = 0d;
-                for (int c = 0; c < col; c++)
-                {
-                    me += datas[i, c] * funcs[c];                    
-                }
-                Console.WriteLine(me);
-            }
-
-        }
-
-        static void CalHotel2()
-        {
-            var M3 = new double[] { 1, 23, 8, 283, 280, 81.2 };
-            var M4 = new double[] { 1, 19, 11, 291, 287, 84.9 };
-            var M5 = new double[] { 1, 22, 9, 294, 290, 75.1 };
-            var M6 = new double[] { 1, 20, 10, 298, 295, 75.7 };
-            var M7 = new double[] { 1, 22, 9, 303, 299, 66.1 };
-            var M8 = new double[] { 1, 23, 8, 302, 299, 65.6 };
-            var M9 = new double[] { 1, 21, 9, 296, 292, 77.6 };
-            var M10 = new double[] { 1, 18, 13, 294, 290, 80.2 };
-            var M11 = new double[] { 1, 22, 8, 285, 283, 82.2 };
-            var M12 = new double[] { 1, 21, 10, 279, 276, 62.3 };
-
-            var X = new DenseMatrix(10, 6);
-            X.SetRow(0, M3);
-            X.SetRow(1, M4);
-            X.SetRow(2, M5);
-            X.SetRow(3, M6);
-            X.SetRow(4, M7);
-            X.SetRow(5, M8);
-            X.SetRow(6, M9);
-            X.SetRow(7, M10);
-            X.SetRow(8, M11);
-            X.SetRow(9, M12);
-
-            var ydata = new double[] { 539442, 340016, 48100, 574992, 748957, 687898, 648278, 519887, 384086, 539514 };
-            var y = new DenseVector(ydata);
-            var p = X.QR().Solve(y);
-            Console.WriteLine("a={0},b={1},c={2},d={3},e={4},f={5}", p[0], p[1], p[2], p[3], p[4], p[5]);
-            Console.WriteLine("1");
-        }
     }
 }
