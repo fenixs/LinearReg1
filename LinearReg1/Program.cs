@@ -15,7 +15,7 @@ namespace LinearReg1
     {
         static void Main(string[] args)
         {
-
+            
             Console.WriteLine("请输入csv文件目录(输入q退出):");
             var inputstr = Console.ReadLine();
             while (!File.Exists(inputstr))
@@ -62,6 +62,7 @@ namespace LinearReg1
             //var p = LinearReg(xdata, ydata);            //线性回归
             //PrintResult(p, headers);
        
+            
 
             Console.ReadKey();
         }
@@ -76,7 +77,7 @@ namespace LinearReg1
         /// <param name="ydata"></param>
         /// <param name="p">回归公式，p[0]为常量</param>
         /// <returns></returns>
-        private static void CalR2CV(double[,] xdata,double[] ydata,Vector<double> p,out double R2,out double CV)
+        private static void CalR2CVFsig(double[,] xdata,double[] ydata,Vector<double> p,out double R2,out double CV,out double F,out double sig)
         {
             /*
              * R^2 = 1 - SEline/SEy
@@ -87,6 +88,8 @@ namespace LinearReg1
             int col = xdata.GetLength(1);
             R2 = 0d;
             CV = 1d;
+            F = 0d;
+            sig = 1d;
 
             if(ydata.Length!=row) return;
             if(p.Count != col) return;
@@ -180,8 +183,8 @@ namespace LinearReg1
                     }
                     var p = LinearReg(xdata1, ydata);
                     var line = GeneResultSTring(p, headers,cb);
-                    double R2, CV;
-                    CalR2CV(xdata1, ydata, p,out R2,out CV);
+                    double R2, CV,F,sig;
+                    CalR2CVFsig(xdata1, ydata, p,out R2,out CV,out F,out sig);
                     line += "," + R2.ToString("0.#####");
                     line += "," + CV.ToString("0.#####");
                     resLines.Add(line);
